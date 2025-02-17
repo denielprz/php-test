@@ -2,7 +2,7 @@
 <?php
 
 // Autoload the required classes
-// require_once 'vendor/autoload.php';
+require_once 'vendor/autoload.php';
 
 class UserUpload{
     private $options = [];
@@ -10,6 +10,8 @@ class UserUpload{
     private $dryRun = false;
     // Set the db connection
     private $dbConnection = null;
+    // Track processed rows to prevent attempted duplicate entry
+    private $processedRows = [];
 
     public function __construct() {
         $this->parseCommandLineOptions();
@@ -108,6 +110,30 @@ class UserUpload{
         return true;
     }
 
+    // Proper casing for special names (i.e. O'Connor, etc)
+    private function normalizeName($name) {
+        // Split spaces, hyphens, and apostrophers while keeping delimiters
+        $nameParts = preg_split('/(\s|-|\'|\')/', $name, -1, PREG_SPLIT_DELIM_CAPTURE);
+        $result = '';
+
+        foreach ($nameParts as $part) {
+            // Capitalize the first letter of each part
+            $result .= ucfirst(strtolower($part));
+        }
+
+        return $result;
+    }
+
+    // Check if row is a duplicate
+    private function isDuplicateRow($email) {
+        $key = strtolower($email);
+        if (in_array($key, $this->processedRows)) {
+            return true;
+        }
+        $this->processedRows[] = $key;
+        return false;
+    }
+
     // Method to process the CSV file
     private function processCSVFile($filename) {
         // Ensure file exists
@@ -148,9 +174,16 @@ class UserUpload{
             // Normalize field -> capitalize name vals and lowercase email vals
             [$name, $surname, $email] = array_map('trim', $row);
 
-            $name = ucfirst(strtolower($name));
-            $surname = ucfirst(strtolower($surname));
+            $name = $this->normalizeName($name);
+            $surname = $this->normalizeName($surname);
             $email = strtolower($email);
+
+            // Check for duplicates
+            if ($this->isDuplicateRow($email)) {
+                echo "Skipping duplicate email in row $rowCount: ($email)\n";
+                $errorCount++;
+                continue;
+            }
 
             // Validate email
             if(!$this->validateEmail($email)) {
