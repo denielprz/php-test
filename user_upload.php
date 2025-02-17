@@ -1,11 +1,15 @@
 #!/usr/bin/env php
-
 <?php
+
+// Autoload the required classes
+// require_once 'vendor/autoload.php';
 
 class UserUpload{
     private $options = [];
     // Set dry run option to false by default
     private $dryRun = false;
+    // Set the db connection
+    private $dbConnection = null;
 
     public function __construct() {
         $this->parseCommandLineOptions();
@@ -37,10 +41,62 @@ class UserUpload{
         echo "  --help Show this help message\n";
     }
 
-    public function run(){
+    // Method to connect to the database
+    private function connectToDatabase() {
+        // Escape if the connection is already established
+        if ($this->dbConnection) {
+            return;
+        }
+
+        // Connect to the database
+        $host = $this->options['h'] ?? 'localhost';
+        $user = $this->options['u'] ?? null;
+        $password = $this->options['p'] ?? null;
+
+        // Ensure credentials are provided
+        if (!$user || !$password) {
+            throw new Exception("Please provide the username and password for the database connection.");
+        }
+
+        // Connect to the database
+        try {
+            $dsn = "pgsql:host=$host;dbname=postgres";
+            $this->dbConnection = new PDO($dsn, $user, $password);
+            // Set the error mode to exceptions
+            $this->dbConnection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        } catch (PDOException $e) {
+            throw new Exception("Error connecting to the database: " . $e->getMessage());
+        }
+    }
+
+    // Method to create the table in the database
+    private function createTable() {
+        // Connect to the database
+        $this->connectToDatabase();
+
+        // Create the table if it does not exist
+        $sql = "CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            surname VARCHAR(100) NOT NULL,
+            email VARCHAR(100) NOT NULL UNIQUE
+        )";
+        
         try{
-            // Placeholder for the main logic of the script
-            echo "Running the script...\n";
+            $this->dbConnection->exec($sql);
+            echo "Table created successfully\n";
+        } catch (PDOException $e) {
+            throw new Exception("Error creating table: " . $e->getMessage());
+        }
+    }
+
+    // Run function of the script
+    public function run() {
+        try{
+            if (isset($this->options['create_table'])) {
+                $this->createTable();
+                return;
+            }
         } catch (Exception $e) {
             echo $e->getMessage();
         }
