@@ -13,7 +13,7 @@ class UserUpload{
 
     public function __construct() {
         $this->parseCommandLineOptions();
-    }
+        }
 
     private function parseCommandLineOptions() {
         // Parse command line options for user entry into the table
@@ -108,6 +108,85 @@ class UserUpload{
         return true;
     }
 
+    // Method to process the CSV file
+    private function processCSVFile($filename) {
+        // Ensure file exists
+        if (!file_exists($filename)) {
+            throw new Exception("File does not exist: $filename");
+        }
+
+        // Connect to the database if not in dry run mode
+        if (!$this->dryRun) {
+            $this->connectToDatabase();
+        }
+
+        // Open the file
+        $file = fopen($filename, 'r');
+        if (!$file) {
+            throw new Exception("Error opening file: $filename");
+        }
+
+        // Skip header row
+        fgetcsv($file, 0, ',', '"', '\\'); 
+
+        $insertTemplate = "INSERT INTO users (name, surname, email) VALUES (:name, :surname, :email)";
+
+        // Loop through the file
+        $rowCount = 0;
+        $errorCount = 0;
+
+        while(($row = fgetcsv($file, 0, ',', '"', '\\')) !== false) {
+            $rowCount++;
+
+            // Check row has all three columns
+            if(count($row) !== 3) {
+                echo "Error on row $rowCount: Invalid number of columns\n";
+                $errorCount++;
+                continue;
+            }
+
+            // Normalize field -> capitalize name vals and lowercase email vals
+            [$name, $surname, $email] = array_map('trim', $row);
+
+            $name = ucfirst(strtolower($name));
+            $surname = ucfirst(strtolower($surname));
+            $email = strtolower($email);
+
+            // Validate email
+            if(!$this->validateEmail($email)) {
+                echo "Error on row $rowCount: Invalid email address - $email\n";
+                $errorCount++;
+                continue;
+            }
+
+            // Insert into the database if not in dry run mode
+            if (!$this->dryRun) {
+                try{
+                $stmt = $this->dbConnection->prepare($insertTemplate);
+                $stmt->execute([
+                    'name' => $name,
+                    'surname' => $surname,
+                    'email' => $email
+                ]);
+                echo "Inserted row $rowCount: $name $surname ($email)\n";
+                } catch (PDOException $e) {
+                    echo "Error on row $rowCount: " . $e->getMessage() . "\n";
+                    $errorCount++;
+                }
+            } else {
+                echo "Dry run: Would have inserted row $rowCount: $name $surname ($email)\n";
+            }
+        }
+
+        // Close the file
+        fclose($file);
+
+        echo "Processed $rowCount rows\n";
+        if ($errorCount > 0) {
+            echo "Encountered $errorCount errors\n";
+        }
+    }   
+
     // Run function of the script
     public function run() {
         try{
@@ -115,8 +194,16 @@ class UserUpload{
                 $this->createTable();
                 return;
             }
+
+            if (!isset($this->options['file'])) {
+                throw new Exception("Please provide the file to be processed using the --file option.");
+            }
+
+            $this->processCSVFile($this->options['file']);
+
         } catch (Exception $e) {
             echo $e->getMessage();
+            exit(1);
         }
     }
 }
