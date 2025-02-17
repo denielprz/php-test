@@ -90,6 +90,24 @@ class UserUpload{
         }
     }
 
+    // Method to validate the email address
+    private function validateEmail($email) {
+        // Check if the email contains only allowed characters and one @ symbol
+        // Regex can be modified to allow more characters if needed
+        // For example, some email providers allow the + character and can be added to the regex
+        // Regex was included for more strict validation
+        if (!preg_match('/^(?!.*\.\.)[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/', $email)) {
+            return false;
+        }
+        
+        // Validate the email address using PHP's built-in filter
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+
+        return true;
+    }
+
     // Run function of the script
     public function run() {
         try{
